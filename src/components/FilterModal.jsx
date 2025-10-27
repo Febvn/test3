@@ -117,7 +117,7 @@ const DateInput = styled.input`
   }
 `;
 
-/* FilterButton - Tombol kirim dengan efek hover dan animasi latar belakang yang meluncur */
+/* FilterButton - Tombol kirim dengan efek hover yang mengubah warna latar dan teks */
 const FilterButton = styled.button`
   background-color: #000;
   color: #fff;
@@ -128,11 +128,11 @@ const FilterButton = styled.button`
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
   
-  /* Efek hover dengan pergerakan ke atas dan bayangan */
+  /* Efek hover dengan warna terbalik dan bayangan */
   &:hover {
+    background-color: #fff;
+    color: #000;
     transform: translateY(-3px);
     box-shadow: 0 6px 0 #000;
   }
@@ -141,25 +141,6 @@ const FilterButton = styled.button`
   &:active {
     transform: translateY(0);
     box-shadow: 0 3px 0 #000;
-  }
-  
-  /* Pseudo-elemen untuk animasi latar belakang yang meluncur */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #ff4d4d;
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-    z-index: -1;
-  }
-  
-  /* Animasi pseudo-elemen saat hover */
-  &:hover::before {
-    transform: translateX(0);
   }
 `;
 

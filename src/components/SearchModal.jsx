@@ -104,7 +104,7 @@ const SearchInput = styled.input`
   }
 `;
 
-/* SearchButton - Tombol untuk mengirimkan pencarian dengan efek hover dan animasi latar belakang */
+/* SearchButton - Tombol untuk mengirimkan pencarian dengan efek hover yang mengubah warna latar dan teks */
 const SearchButton = styled.button`
   background-color: #000;
   color: #fff;
@@ -115,11 +115,11 @@ const SearchButton = styled.button`
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
   
-  /* Efek hover dengan pergeseran ke atas dan bayangan */
+  /* Efek hover dengan warna terbalik dan bayangan */
   &:hover {
+    background-color: #fff;
+    color: #000;
     transform: translateY(-3px);
     box-shadow: 0 6px 0 #000;
   }
@@ -128,25 +128,6 @@ const SearchButton = styled.button`
   &:active {
     transform: translateY(0);
     box-shadow: 0 3px 0 #000;
-  }
-  
-  /* Pseudo-element untuk animasi latar belakang hijau saat hover */
-  &::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: #5ad641;
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-    z-index: -1;
-  }
-  
-  /* Animasi latar belakang saat hover */
-  &:hover::before {
-    transform: translateX(0);
   }
 `;
 

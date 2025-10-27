@@ -27,6 +27,17 @@ const MainContent = styled.main`
   padding: 20px;
 `;
 
+/* InfoBar - small debug/info line to show counts */
+const InfoBar = styled.div`
+  font-size: 14px;
+  color: #000;
+  background: #fff;
+  border: 3px solid #000;
+  padding: 8px 12px;
+  display: inline-block;
+  margin-bottom: 20px;
+`;
+
 /* Header - Bagian header dengan latar belakang hitam dan pola diagonal */
 const Header = styled.header`
   background-color: #000;
@@ -138,36 +149,99 @@ function App() {
     setLoading(true);
     setError(null);
     
-   let url = `https://newsapi.org/v2/top-headlines?apiKey=${API_KEY}&pageSize=${pageSize}&page=${page}&country=us`;
-    /* Menambahkan kategori ke URL jika bukan 'all' */
+    // Build endpoint and params. Use `everything` when searching or when date filters are applied,
+    // because `top-headlines` does not support `from`/`to`.
+    let endpoint = 'https://newsapi.org/v2/top-headlines';
+    let params = new URLSearchParams({
+      apiKey: API_KEY,
+      pageSize: String(pageSize),
+      page: String(page),
+      country: 'us'
+    });
+
+    // Category applies only to top-headlines
     if (category !== 'all') {
-      url += `&category=${category}`;
+      params.set('category', category);
     }
-    
-    /* Mengubah URL jika ada query pencarian */
+
+    // If there's a search query, switch to everything endpoint (supports date filtering)
     if (searchQuery) {
-      url = `https://newsapi.org/v2/everything?q=${searchQuery}&apiKey=${API_KEY}&pageSize=${pageSize}&page=${page}`;
+      endpoint = 'https://newsapi.org/v2/everything';
+      params = new URLSearchParams({
+        apiKey: API_KEY,
+        q: searchQuery,
+        pageSize: String(pageSize),
+        page: String(page)
+      });
     }
-    
-    /* Menambahkan filter tanggal awal */
-    if (fromDate) {
-      url += `&from=${fromDate}`;
+
+    // If user applied date filters but there's no search query, use 'everything' and a generic q
+    // so the API honors the from/to params. Using q='news' as a broad default.
+    if (!searchQuery && (fromDate || toDate)) {
+      endpoint = 'https://newsapi.org/v2/everything';
+      params = new URLSearchParams({
+        apiKey: API_KEY,
+        q: 'news',
+        pageSize: String(pageSize),
+        page: String(page)
+      });
     }
-    
-    /* Menambahkan filter tanggal akhir */
-    if (toDate) {
-      url += `&to=${toDate}`;
-    }
+
+    if (fromDate) params.set('from', fromDate);
+    if (toDate) params.set('to', toDate);
+
+    const url = `${endpoint}?${params.toString()}`;
     
     try {
       /* Mengambil data dari API */
       const response = await fetch(url);
       const data = await response.json();
-      
+      console.log('NewsAPI response', data);
+      console.log('Requested url:', url);
+
       /* Memproses data jika status 'ok' */
       if (data.status === 'ok') {
-        setArticles(data.articles);
-        setTotalResults(data.totalResults);
+        // Jika API mengembalikan lebih sedikit artikel daripada pageSize,
+        // cobalah mengambil halaman API berikutnya dan gabungkan hasilnya
+        // sampai kita punya pageSize item atau tidak ada lagi.
+        let collected = Array.isArray(data.articles) ? [...data.articles] : [];
+        const totalResultsFromAPI = data.totalResults || 0;
+
+        // Bangun ulang endpoint & params agar mudah mengambil halaman berikutnya
+        let endpoint = url.split('?')[0];
+        const baseParams = new URLSearchParams(url.split('?')[1] || '');
+        // Hitung jumlah halaman API maksimal yang tersedia
+        const maxApiPages = Math.max(1, Math.ceil(totalResultsFromAPI / pageSize));
+
+        let apiPage = parseInt(baseParams.get('page') || page, 10);
+
+        while (collected.length < pageSize && apiPage < maxApiPages) {
+          apiPage += 1;
+          baseParams.set('page', String(apiPage));
+          const nextUrl = `${endpoint}?${baseParams.toString()}`;
+          console.log('Fetching additional page to fill pageSize:', nextUrl);
+          // Fetch next API page
+          // Note: this may increase API usage / hit rate limits on NewsAPI. Use cautiously.
+          // If you hit rate limits, consider increasing pageSize server-side or adjusting logic.
+          // eslint-disable-next-line no-await-in-loop
+          const nextResp = await fetch(nextUrl);
+          // eslint-disable-next-line no-await-in-loop
+          const nextData = await nextResp.json();
+          if (nextData.status !== 'ok' || !Array.isArray(nextData.articles) || nextData.articles.length === 0) {
+            break;
+          }
+          // Add unique articles (by url) to avoid duplicates
+          for (const a of nextData.articles) {
+            if (!collected.some(x => x.url === a.url)) {
+              collected.push(a);
+            }
+            if (collected.length >= pageSize) break;
+          }
+        }
+
+        // Set articles (limit to pageSize) and totalResults
+        setArticles(collected.slice(0, pageSize));
+        setTotalResults(totalResultsFromAPI);
       } else {
         /* Menampilkan pesan error jika status bukan 'ok' */
         setError(data.message || 'Failed to fetch articles');
@@ -233,6 +307,7 @@ function App() {
         {/* Menampilkan daftar artikel dan pagination jika tidak ada loading atau error */}
         {!loading && !error && (
           <>
+            {/* Debug/info: show how many articles were received and totalResults */}
             <ArticleList articles={articles} />
             <Pagination 
               currentPage={page} 

@@ -9,7 +9,7 @@ const PaginationContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 5px;
+  gap: 0x;
   margin: 30px 0;
   
   /* Responsif untuk layar yang lebih kecil */
@@ -65,30 +65,24 @@ const PageEllipsis = styled.span`
 
 /* Pagination - Komponen untuk menavigasi antar halaman */
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
-  /* Array untuk menyimpan nomor halaman yang akan ditampilkan */
-  const pageNumbers = [];
-  /* Jumlah maksimum halaman yang terlihat sekaligus */
-  const maxVisiblePages = 5;
-  
-  /* Menghitung halaman awal yang akan ditampilkan, memastikan halaman saat ini berada di tengah jika memungkinkan */
-  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-  /* Menghitung halaman akhir yang akan ditampilkan berdasarkan halaman awal */
-  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-  
-  /* Menyesuaikan halaman awal jika jumlah halaman yang terlihat kurang dari maksimum */
-  if (endPage - startPage + 1 < maxVisiblePages) {
-    startPage = Math.max(1, endPage - maxVisiblePages + 1);
-  }
-  
-  /* Mengisi array pageNumbers dengan nomor halaman dari startPage hingga endPage */
-  for (let i = startPage; i <= endPage; i++) {
-    pageNumbers.push(i);
-  }
-  
-  /* Render komponen pagination */
+  // Menghitung range halaman yang akan ditampilkan (4 angka berurutan)
+  const calculateVisiblePages = () => {
+    let start = currentPage;
+    // Jika halaman saat ini terlalu dekat dengan akhir, geser window ke kiri
+    if (start > totalPages - 3) {
+      start = Math.max(totalPages - 3, 1);
+    }
+    // Generate 4 angka berurutan dari start
+    return Array.from({ length: 4 }, (_, i) => start + i).filter(num => num <= totalPages);
+  };
+
+  const visiblePages = calculateVisiblePages();
+  const showFirstPage = visiblePages[0] > 1;
+  const showLastPage = visiblePages[visiblePages.length - 1] < totalPages;
+
   return (
     <PaginationContainer>
-      {/* Tombol untuk navigasi ke halaman sebelumnya, dinonaktifkan jika di halaman pertama */}
+      {/* Tombol previous (<<) */}
       <PageButton 
         onClick={() => onPageChange(currentPage - 1)} 
         disabled={currentPage === 1}
@@ -96,19 +90,23 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         &laquo;
       </PageButton>
       
-      {/* Menampilkan tombol halaman pertama dan elipsis jika rentang halaman tidak dimulai dari 1 */}
-      {startPage > 1 && (
+      {/* Tampilkan halaman pertama jika window tidak dimulai dari 1 */}
+      {showFirstPage && (
         <>
-          <PageButton onClick={() => onPageChange(1)}>1</PageButton>
-          {startPage > 2 && <PageEllipsis>...</PageEllipsis>}
+          <PageButton 
+            active={currentPage === 1 ? 1 : 0}
+            onClick={() => onPageChange(1)}
+          >
+            1
+          </PageButton>
+          <PageEllipsis>...</PageEllipsis>
         </>
       )}
       
-      {/* Memetakan array pageNumbers untuk membuat tombol untuk setiap halaman dalam rentang yang terlihat */}
-      {pageNumbers.map(page => (
+      {/* Tampilkan 4 angka berurutan */}
+      {visiblePages.map(page => (
         <PageButton 
-          key={page} 
-          /* Menandai tombol sebagai aktif jika sesuai dengan halaman saat ini */
+          key={page}
           active={page === currentPage ? 1 : 0}
           onClick={() => onPageChange(page)}
         >
@@ -116,15 +114,20 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         </PageButton>
       ))}
       
-      {/* Menampilkan elipsis dan tombol halaman terakhir jika rentang halaman tidak berakhir di halaman terakhir */}
-      {endPage < totalPages && (
+      {/* Tampilkan halaman terakhir jika window tidak sampai ke halaman terakhir */}
+      {showLastPage && (
         <>
-          {endPage < totalPages - 1 && <PageEllipsis>...</PageEllipsis>}
-          <PageButton onClick={() => onPageChange(totalPages)}>{totalPages}</PageButton>
+          <PageEllipsis>...</PageEllipsis>
+          <PageButton 
+            active={currentPage === totalPages ? 1 : 0}
+            onClick={() => onPageChange(totalPages)}
+          >
+            {totalPages}
+          </PageButton>
         </>
       )}
       
-      {/* Tombol untuk navigasi ke halaman berikutnya, dinonaktifkan jika di halaman terakhir */}
+      {/* Tombol next (>>) */}
       <PageButton 
         onClick={() => onPageChange(currentPage + 1)} 
         disabled={currentPage === totalPages}
