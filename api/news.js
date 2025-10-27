@@ -29,7 +29,12 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.NEWSAPI_KEY;
     if (!apiKey) {
-      return res.status(500).json({ status: 'error', message: 'Server missing NEWSAPI_KEY environment variable' });
+      // Return a helpful message so the frontend can display actionable info
+      return res.status(500).json({
+        status: 'error',
+        message:
+          'Server missing NEWSAPI_KEY environment variable. Please set NEWSAPI_KEY in your hosting provider (e.g. Vercel Project Settings -> Environment Variables) and redeploy.'
+      });
     }
 
     params.set('apiKey', apiKey);
@@ -37,11 +42,18 @@ export default async function handler(req, res) {
     const url = `${endpoint}?${params.toString()}`;
 
     const newsRes = await fetch(url);
-    const data = await newsRes.json();
+    // If upstream returned non-JSON (or an error), guard with try/catch
+    let data;
+    try {
+      data = await newsRes.json();
+    } catch (e) {
+      return res.status(502).json({ status: 'error', message: 'Upstream NewsAPI returned invalid JSON' });
+    }
 
     // Forward status and JSON
-    res.status(newsRes.status === 200 ? 200 : newsRes.status).json(data);
+    return res.status(newsRes.status === 200 ? 200 : newsRes.status).json(data);
   } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
+    // Provide more context for unexpected server errors
+    res.status(500).json({ status: 'error', message: `Server error: ${err.message}` });
   }
 }
