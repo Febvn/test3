@@ -153,10 +153,10 @@ function App() {
     setLoading(true);
     setError(null);
     
-    // Build endpoint and params. Use `everything` when searching or when date filters are applied,
-    // because `top-headlines` does not support `from`/`to`.
-    // Call our serverless proxy on the same origin. The proxy will add the API key.
-    let endpoint = '/api/news';
+  // Build endpoint and params. Use `everything` when searching or when date filters are applied,
+  // because `top-headlines` does not support `from`/`to`.
+  // Call our serverless proxy on the same origin. The proxy will add the API key.
+  let endpoint = '/api/get-news';
     let params = new URLSearchParams({
       pageSize: String(pageSize),
       page: String(page),
@@ -171,7 +171,7 @@ function App() {
     // If there's a search query, switch to everything endpoint (supports date filtering)
     if (searchQuery) {
       // still call our proxy; it will map to the 'everything' endpoint server-side
-      endpoint = '/api/news';
+      endpoint = '/api/get-news';
       params = new URLSearchParams({
         q: searchQuery,
         pageSize: String(pageSize),
@@ -183,7 +183,7 @@ function App() {
     // so the API honors the from/to params. Using q='news' as a broad default.
     if (!searchQuery && (fromDate || toDate)) {
       // use proxy; proxy will call 'everything' server-side and we provide a generic q
-      endpoint = '/api/news';
+      endpoint = '/api/get-news';
       params = new URLSearchParams({
         q: 'news',
         pageSize: String(pageSize),
