@@ -135,7 +135,11 @@ function App() {
   const [totalResults, setTotalResults] = useState(0);
   
   /* Kunci API untuk NewsAPI */
-  const API_KEY = '5615ef546a5b4256a55af311eedf8480';
+  // CARI BARIS INI (sekitar line 75):
+// NOTE: API key must NOT be used in frontend code when deployed.
+// We proxy requests through a serverless function at /api/news which
+// uses process.env.NEWSAPI_KEY. Remove any hard-coded API keys.
+
   /* Jumlah artikel per halaman */
   const pageSize = 10;
   
@@ -151,9 +155,9 @@ function App() {
     
     // Build endpoint and params. Use `everything` when searching or when date filters are applied,
     // because `top-headlines` does not support `from`/`to`.
-    let endpoint = 'https://newsapi.org/v2/top-headlines';
+    // Call our serverless proxy on the same origin. The proxy will add the API key.
+    let endpoint = '/api/news';
     let params = new URLSearchParams({
-      apiKey: API_KEY,
       pageSize: String(pageSize),
       page: String(page),
       country: 'us'
@@ -166,9 +170,9 @@ function App() {
 
     // If there's a search query, switch to everything endpoint (supports date filtering)
     if (searchQuery) {
-      endpoint = 'https://newsapi.org/v2/everything';
+      // still call our proxy; it will map to the 'everything' endpoint server-side
+      endpoint = '/api/news';
       params = new URLSearchParams({
-        apiKey: API_KEY,
         q: searchQuery,
         pageSize: String(pageSize),
         page: String(page)
@@ -178,9 +182,9 @@ function App() {
     // If user applied date filters but there's no search query, use 'everything' and a generic q
     // so the API honors the from/to params. Using q='news' as a broad default.
     if (!searchQuery && (fromDate || toDate)) {
-      endpoint = 'https://newsapi.org/v2/everything';
+      // use proxy; proxy will call 'everything' server-side and we provide a generic q
+      endpoint = '/api/news';
       params = new URLSearchParams({
-        apiKey: API_KEY,
         q: 'news',
         pageSize: String(pageSize),
         page: String(page)

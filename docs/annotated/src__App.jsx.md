@@ -102,7 +102,7 @@ function App() {
   const [page, setPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   
-  const API_KEY = '5615ef546a5b4256a55af311eedf8480';
+  // API key removed from documentation for security. Use server-side env var NEWSAPI_KEY instead.
   const pageSize = 10;
   
   useEffect(() => {
