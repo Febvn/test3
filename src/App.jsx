@@ -152,46 +152,27 @@ function App() {
     setLoading(true);
     setError(null);
     
-  // Build endpoint and params. Use `everything` when searching or when date filters are applied,
-  // because `top-headlines` does not support `from`/`to`.
-  // Call our serverless proxy on the same origin. The proxy will add the API key.
-  let endpoint = '/api/get-news';
+    let endpoint = 'https://newsapi.org/v2/top-headlines';
     let params = new URLSearchParams({
       pageSize: String(pageSize),
       page: String(page),
-      country: 'us'
+      country: 'us',
+      apiKey: '458c858a92594696ac3dc0fe1f886ee3'  // API key langsung untuk testing
     });
 
-    // Category applies only to top-headlines
     if (category !== 'all') {
       params.set('category', category);
     }
 
-    // If there's a search query, switch to everything endpoint (supports date filtering)
     if (searchQuery) {
-      // still call our proxy; it will map to the 'everything' endpoint server-side
-      endpoint = '/api/get-news';
+      endpoint = 'https://newsapi.org/v2/everything';
       params = new URLSearchParams({
         q: searchQuery,
         pageSize: String(pageSize),
-        page: String(page)
+        page: String(page),
+        apiKey: '458c858a92594696ac3dc0fe1f886ee3'
       });
     }
-
-    // If user applied date filters but there's no search query, use 'everything' and a generic q
-    // so the API honors the from/to params. Using q='news' as a broad default.
-    if (!searchQuery && (fromDate || toDate)) {
-      // use proxy; proxy will call 'everything' server-side and we provide a generic q
-      endpoint = '/api/get-news';
-      params = new URLSearchParams({
-        q: 'news',
-        pageSize: String(pageSize),
-        page: String(page)
-      });
-    }
-
-    if (fromDate) params.set('from', fromDate);
-    if (toDate) params.set('to', toDate);
 
     const url = `${endpoint}?${params.toString()}`;
     
