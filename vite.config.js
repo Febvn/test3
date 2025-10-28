@@ -7,4 +7,13 @@ export default defineConfig({
   // GitHub Pages you would set `base` to the repo path instead.
   base: '/',
   plugins: [react()],
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api/, '/api')
+      }
+    }
+  }
 })

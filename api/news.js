@@ -3,58 +3,40 @@
 
 export default async function handler(req, res) {
   try {
-    const query = req.query || {};
-
-    // Decide which NewsAPI endpoint to use.
-    // If there's a q or date filters, use 'everything', otherwise use 'top-headlines'.
-    const useEverything = Boolean(query.q) || Boolean(query.from) || Boolean(query.to);
-    let endpoint = useEverything ? 'https://newsapi.org/v2/everything' : 'https://newsapi.org/v2/top-headlines';
-
-    // Build params, but do not rely on client to send apiKey
-    const params = new URLSearchParams();
-
-    if (useEverything) {
-      // ensure there's at least a q param for everything
-      params.set('q', query.q || 'news');
-    } else {
-      // top-headlines: allow country/category
-      if (query.country) params.set('country', query.country);
-      if (query.category) params.set('category', query.category);
-    }
-
-    if (query.page) params.set('page', query.page);
-    if (query.pageSize) params.set('pageSize', query.pageSize);
-    if (query.from) params.set('from', query.from);
-    if (query.to) params.set('to', query.to);
-
-    // Support multiple environment variable names used in different setups
+    const { category, page = '1', pageSize = '10', searchQuery } = req.query;
     const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
     if (!apiKey) {
-      // Return a helpful message so the frontend can display actionable info
-      return res.status(500).json({
-        status: 'error',
-        message:
-          'Server missing NewsAPI key. Please set NEWSAPI_KEY (or VITE_NEWS_API_KEY) in your hosting provider (e.g. Vercel Project Settings -> Environment Variables) and redeploy.'
-      });
+      console.error('Missing NEWSAPI_KEY');
+      return res.status(500).json({ error: 'Missing NEWSAPI_KEY' });
     }
 
-    params.set('apiKey', apiKey);
+    const endpoint = searchQuery ? 'https://newsapi.org/v2/everything' : 'https://newsapi.org/v2/top-headlines';
+    const params = new URLSearchParams({ apiKey, page, pageSize });
 
-    const url = `${endpoint}?${params.toString()}`;
+    if (searchQuery) params.set('q', searchQuery);
+    else params.set('country', 'us');
 
-    const newsRes = await fetch(url);
-    // If upstream returned non-JSON (or an error), guard with try/catch
+    if (category && category !== 'all') params.set('category', category);
+
+    const upstream = await fetch(`${endpoint}?${params.toString()}`);
+    const text = await upstream.text();
+
+    if (!upstream.ok) {
+      console.error('Upstream HTTP error', upstream.status, text);
+      return res.status(502).json({ error: 'Upstream NewsAPI error', status: upstream.status, details: text });
+    }
+
     let data;
     try {
-      data = await newsRes.json();
-    } catch (e) {
-      return res.status(502).json({ status: 'error', message: 'Upstream NewsAPI returned invalid JSON' });
+      data = text ? JSON.parse(text) : null;
+    } catch (parseErr) {
+      console.error('Failed to parse NewsAPI response:', parseErr, 'raw:', text);
+      return res.status(502).json({ error: 'Invalid JSON from NewsAPI', details: text.slice(0, 1000) });
     }
 
-    // Forward status and JSON
-    return res.status(newsRes.status === 200 ? 200 : newsRes.status).json(data);
+    return res.status(200).json(data);
   } catch (err) {
-    // Provide more context for unexpected server errors
-    res.status(500).json({ status: 'error', message: `Server error: ${err.message}` });
+    console.error('API handler error:', err);
+    return res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 }
