@@ -135,7 +135,6 @@ function App() {
   const [totalResults, setTotalResults] = useState(0);
   
   /* Kunci API untuk NewsAPI */
-  // CARI BARIS INI (sekitar line 75):
 // NOTE: API key must NOT be used in frontend code when deployed.
 // We proxy requests through a serverless function at /api/news which
 // uses process.env.NEWSAPI_KEY. Remove any hard-coded API keys.
@@ -197,64 +196,142 @@ function App() {
     const url = `${endpoint}?${params.toString()}`;
     
     try {
-      /* Mengambil data dari API */
-      const response = await fetch(url);
-      const data = await response.json();
-      console.log('NewsAPI response', data);
-      console.log('Requested url:', url);
+      /* Mengambil data dari API (proxy) */
+      let proxyResponse = await fetch(url).catch(e => {
+        // network-level error
+        console.error('Network error when requesting proxy URL', url, e);
+        return null;
+      });
 
-      /* Memproses data jika status 'ok' */
-      if (data.status === 'ok') {
-        // Jika API mengembalikan lebih sedikit artikel daripada pageSize,
-        // cobalah mengambil halaman API berikutnya dan gabungkan hasilnya
-        // sampai kita punya pageSize item atau tidak ada lagi.
-        let collected = Array.isArray(data.articles) ? [...data.articles] : [];
-        const totalResultsFromAPI = data.totalResults || 0;
+      let data = null;
+      let proxyStatus = proxyResponse ? proxyResponse.status : null;
 
-        // Bangun ulang endpoint & params agar mudah mengambil halaman berikutnya
-        let endpoint = url.split('?')[0];
-        const baseParams = new URLSearchParams(url.split('?')[1] || '');
-        // Hitung jumlah halaman API maksimal yang tersedia
-        const maxApiPages = Math.max(1, Math.ceil(totalResultsFromAPI / pageSize));
-
-        let apiPage = parseInt(baseParams.get('page') || page, 10);
-
-        while (collected.length < pageSize && apiPage < maxApiPages) {
-          apiPage += 1;
-          baseParams.set('page', String(apiPage));
-          const nextUrl = `${endpoint}?${baseParams.toString()}`;
-          console.log('Fetching additional page to fill pageSize:', nextUrl);
-          // Fetch next API page
-          // Note: this may increase API usage / hit rate limits on NewsAPI. Use cautiously.
-          // If you hit rate limits, consider increasing pageSize server-side or adjusting logic.
-          // eslint-disable-next-line no-await-in-loop
-          const nextResp = await fetch(nextUrl);
-          // eslint-disable-next-line no-await-in-loop
-          const nextData = await nextResp.json();
-          if (nextData.status !== 'ok' || !Array.isArray(nextData.articles) || nextData.articles.length === 0) {
-            break;
-          }
-          // Add unique articles (by url) to avoid duplicates
-          for (const a of nextData.articles) {
-            if (!collected.some(x => x.url === a.url)) {
-              collected.push(a);
-            }
-            if (collected.length >= pageSize) break;
+      if (proxyResponse) {
+        const contentType = proxyResponse.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await proxyResponse.json();
+        } else {
+          const text = await proxyResponse.text();
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            data = { _raw: text };
           }
         }
 
-        // Set articles (limit to pageSize) and totalResults
-        setArticles(collected.slice(0, pageSize));
-        setTotalResults(totalResultsFromAPI);
+        // Heuristic: if the proxy served the raw function source (JS) or an HTML page
+        // (this happens when the dev server serves the file instead of executing it),
+        // treat it as if the proxy is not available so the fallback can run.
+        if (data && data._raw && (data._raw.includes('export default') || data._raw.includes('import axios') || data._raw.trim().startsWith('<!doctype') || data._raw.includes('handler(req, res)'))) {
+          console.warn('Proxy returned raw file content or HTML; treating proxy as unavailable for local fallback.');
+          console.log('Proxy raw preview:', data._raw.slice(0, 300));
+          // mark as if no proxy response so fallback will attempt direct NewsAPI (dev only)
+          proxyResponse = null; // eslint-disable-line no-param-reassign
+          proxyStatus = null;
+          data = null;
+        } else {
+          console.log('NewsAPI response (proxy)', data);
+          console.log('Requested url (proxy):', url, 'status', proxyStatus);
+        }
       } else {
-        /* Menampilkan pesan error jika status bukan 'ok' */
-        setError(data.message || 'Failed to fetch articles');
+        console.warn('Proxy response was null (network error) for', url);
+      }
+
+      // Helper to collect articles and, if needed, fetch subsequent pages.
+      // Accepts the API data and the URL that was used for the initial fetch so
+      // pagination requests use the same origin/endpoint (important when falling
+      // back to the direct NewsAPI URL vs the local /api proxy).
+      const handleArticlesFrom = (apiData, requestedUrl) => {
+        let collected = Array.isArray(apiData.articles) ? [...apiData.articles] : [];
+        const totalResultsFromAPI = apiData.totalResults || 0;
+
+        // Use the requestedUrl passed in (it may be the proxy URL or the direct NewsAPI URL)
+        const effectiveUrl = requestedUrl || url;
+        let endpointBase = effectiveUrl.split('?')[0];
+        const baseParams = new URLSearchParams(effectiveUrl.split('?')[1] || '');
+        const maxApiPages = Math.max(1, Math.ceil(totalResultsFromAPI / pageSize));
+        let apiPage = parseInt(baseParams.get('page') || page, 10);
+
+        return (async () => {
+          while (collected.length < pageSize && apiPage < maxApiPages) {
+            apiPage += 1;
+            baseParams.set('page', String(apiPage));
+            const nextUrl = `${endpointBase}?${baseParams.toString()}`;
+            console.log('Fetching additional page to fill pageSize:', nextUrl);
+            // eslint-disable-next-line no-await-in-loop
+            const nextResp = await fetch(nextUrl);
+            // eslint-disable-next-line no-await-in-loop
+            const nextData = await nextResp.json();
+            if (nextData.status !== 'ok' || !Array.isArray(nextData.articles) || nextData.articles.length === 0) {
+              break;
+            }
+            for (const a of nextData.articles) {
+              if (!collected.some(x => x.url === a.url)) {
+                collected.push(a);
+              }
+              if (collected.length >= pageSize) break;
+            }
+          }
+          setArticles(collected.slice(0, pageSize));
+          setTotalResults(totalResultsFromAPI);
+        })();
+      };
+
+      // If proxy returned a valid JSON and status ok
+      if (proxyResponse && proxyResponse.ok && data && data.status === 'ok') {
+        await handleArticlesFrom(data, url);
+      } else {
+        // If proxy is missing (404) or network error, and we're running locally, try direct NewsAPI (dev only)
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const viteKey = import.meta.env.VITE_NEWS_API_KEY;
+
+        if ((proxyStatus === 404 || proxyStatus === 502 || !proxyResponse) && isLocal && viteKey) {
+          console.log('Proxy not available locally; falling back to direct NewsAPI using VITE_NEWS_API_KEY (dev only)');
+          // Build direct NewsAPI URL based on current params
+          const directParams = new URLSearchParams(params.toString());
+          directParams.set('apiKey', viteKey);
+          // Decide endpoint: reuse the same path logic as server proxy (top-headlines vs everything)
+          // For simplicity, call the server endpoint used earlier by frontend
+          const directUrl = endpoint.includes('everything') || params.get('q') ? `https://newsapi.org/v2/everything?${directParams.toString()}` : `https://newsapi.org/v2/top-headlines?${directParams.toString()}`;
+
+          try {
+            const directResp = await fetch(directUrl);
+            const directData = await directResp.json();
+            console.log('Direct NewsAPI response', directData, 'url', directUrl);
+            if (directData && directData.status === 'ok') {
+              await handleArticlesFrom(directData, directUrl);
+            } else {
+              setError(directData && directData.message ? `NewsAPI: ${directData.message}` : `Upstream NewsAPI error (${directResp.status})`);
+            }
+          } catch (e) {
+            console.error('Direct NewsAPI fetch failed', e);
+            setError(`Failed to fetch articles (direct): ${e.message}`);
+          }
+        } else {
+          // If proxy returned JSON with an error message, show it; otherwise show status
+          // If proxy returned a 200 but payload doesn't match expected shape, include a concise
+          // snippet of the proxy response to make debugging easier (e.g. HTML or error page).
+          let msg;
+          if (data && data.message) {
+            msg = data.message;
+          } else if (proxyStatus) {
+            if (proxyStatus === 200 && data) {
+              // Show a short preview of the unexpected response body
+              const preview = typeof data === 'string' ? data.slice(0,300) : JSON.stringify(data).slice(0,300);
+              msg = `Unexpected proxy response (200). Preview: ${preview}`;
+            } else {
+              msg = `Request failed (${proxyStatus})`;
+            }
+          } else {
+            msg = 'Failed to fetch articles';
+          }
+          setError(msg || 'Failed to fetch articles. Please try again later.');
+        }
       }
     } catch (err) {
-      /* Menampilkan pesan error jika terjadi kesalahan */
-      setError('Failed to fetch articles. Please try again later.');
+      console.error('Unexpected error fetching articles', err);
+      setError(`Failed to fetch articles. ${err.message}`);
     } finally {
-      /* Menghentikan status loading */
       setLoading(false);
     }
   };

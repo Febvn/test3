@@ -27,13 +27,14 @@ export default async function handler(req, res) {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
 
-    const apiKey = process.env.NEWSAPI_KEY;
+    // Support multiple environment variable names used in different setups
+    const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
     if (!apiKey) {
       // Return a helpful message so the frontend can display actionable info
       return res.status(500).json({
         status: 'error',
         message:
-          'Server missing NEWSAPI_KEY environment variable. Please set NEWSAPI_KEY in your hosting provider (e.g. Vercel Project Settings -> Environment Variables) and redeploy.'
+          'Server missing NewsAPI key. Please set NEWSAPI_KEY (or VITE_NEWS_API_KEY) in your hosting provider (e.g. Vercel Project Settings -> Environment Variables) and redeploy.'
       });
     }
 

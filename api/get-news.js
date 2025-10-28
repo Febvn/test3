@@ -26,15 +26,17 @@ export default async function handler(req, res) {
     if (query.from) params.set('from', query.from);
     if (query.to) params.set('to', query.to);
 
-    const apiKey = process.env.VITE_NEWS_API_KEY;
+    // Prefer NEWSAPI_KEY (common), fall back to VITE_NEWS_API_KEY for older setups
+    const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
     if (!apiKey) {
       return res.status(500).json({
         status: 'error',
         message:
-          'Server missing VITE_NEWS_API_KEY environment variable. Set VITE_NEWS_API_KEY in Vercel Project Settings -> Environment Variables.'
+          'Server missing NewsAPI key. Set NEWSAPI_KEY (or VITE_NEWS_API_KEY) in your environment variables (e.g. Vercel Project Settings -> Environment Variables).'
       });
     }
 
+    // NewsAPI accepts apiKey as a query param
     params.set('apiKey', apiKey);
     const url = `${endpoint}?${params.toString()}`;
 
