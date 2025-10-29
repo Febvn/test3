@@ -140,7 +140,9 @@ function App() {
 // uses process.env.NEWSAPI_KEY. Remove any hard-coded API keys.
 
   /* Jumlah artikel per halaman */
-  const pageSize = 10;
+  const pageSize = 8;
+  /* Hitung total halaman berdasarkan totalResults */
+  const totalPages = Math.max(1, Math.ceil(totalResults / pageSize));
   
   /* useEffect untuk mengambil artikel saat kategori, query pencarian, tanggal, atau halaman berubah */
   useEffect(() => {
@@ -149,6 +151,7 @@ function App() {
   
   /* Fungsi untuk mengambil artikel dari NewsAPI */
   const fetchArticles = async () => {
+    console.log('[debug] fetchArticles start, page=', page, 'pageSize=', pageSize, 'category=', category, 'searchQuery=', searchQuery);
     setLoading(true);
     setError(null);
 
@@ -161,49 +164,87 @@ function App() {
     if (searchQuery) params.set('searchQuery', searchQuery);
 
     try {
-      // In development, call NewsAPI directly using the VITE_NEWS_API_KEY from .env.local
-      // In production (deployed to Vercel) the frontend should call the serverless proxy at /api/news
-      if (import.meta.env.DEV) {
-        const apiKey = import.meta.env.VITE_NEWS_API_KEY;
-        if (!apiKey) throw new Error('Missing VITE_NEWS_API_KEY in development .env.local');
+      // Helper to fetch a specific page and return parsed JSON (works both dev & prod)
+      const fetchPage = async (pageNum) => {
+        if (import.meta.env.DEV) {
+          const apiKey = import.meta.env.VITE_NEWS_API_KEY;
+          if (!apiKey) throw new Error('Missing VITE_NEWS_API_KEY in development .env.local');
 
-        // Use "everything" when searching, otherwise top-headlines
-        let endpoint;
-        if (searchQuery) {
-          const p = new URLSearchParams({ q: searchQuery, page: String(page), pageSize: String(pageSize), apiKey });
-          if (category && category !== 'all') p.set('category', category);
-          endpoint = `https://newsapi.org/v2/everything?${p.toString()}`;
+          if (searchQuery) {
+            const p = new URLSearchParams({ q: searchQuery, page: String(pageNum), pageSize: String(pageSize), apiKey });
+            if (category && category !== 'all') p.set('category', category);
+            if (fromDate) p.set('from', fromDate);
+            if (toDate) p.set('to', toDate);
+            const endpoint = `https://newsapi.org/v2/everything?${p.toString()}`;
+            const res = await fetch(endpoint);
+            const text = await res.text();
+            if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+            return JSON.parse(text);
+          } else {
+            const p = new URLSearchParams({ country: 'us', page: String(pageNum), pageSize: String(pageSize), apiKey });
+            if (category && category !== 'all') p.set('category', category);
+            if (fromDate) p.set('from', fromDate);
+            if (toDate) p.set('to', toDate);
+            const endpoint = `https://newsapi.org/v2/top-headlines?${p.toString()}`;
+            const res = await fetch(endpoint);
+            const text = await res.text();
+            if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+            return JSON.parse(text);
+          }
         } else {
-          const p = new URLSearchParams({ country: 'us', page: String(page), pageSize: String(pageSize), apiKey });
+          const p = new URLSearchParams({ page: String(pageNum), pageSize: String(pageSize) });
           if (category && category !== 'all') p.set('category', category);
-          endpoint = `https://newsapi.org/v2/top-headlines?${p.toString()}`;
+          if (searchQuery) p.set('searchQuery', searchQuery);
+          if (fromDate) p.set('from', fromDate);
+          if (toDate) p.set('to', toDate);
+          const res = await fetch(`/api/news?${p.toString()}`);
+          const text = await res.text();
+          if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+          return JSON.parse(text);
         }
+      };
 
-        const res = await fetch(endpoint);
-        const text = await res.text();
-        if (!res.ok) {
-          let parsed;
-          try { parsed = JSON.parse(text); } catch (_) { parsed = { error: text || `HTTP ${res.status}` } }
-          throw new Error(parsed.error || parsed.message || `HTTP ${res.status}`);
+  // Fetch requested page
+  const firstPageData = await fetchPage(page);
+  console.log('[debug] firstPageData fetched', firstPageData && { status: firstPageData.status, articles: firstPageData.articles && firstPageData.articles.length, totalResults: firstPageData.totalResults });
+      if (!firstPageData || firstPageData.status !== 'ok') throw new Error(firstPageData?.message || 'No articles returned');
+
+      let collected = Array.isArray(firstPageData.articles) ? [...firstPageData.articles] : [];
+      const total = firstPageData.totalResults || 0;
+
+      // If backend returned fewer than pageSize but there are more results available,
+      // fetch subsequent pages and append until we have pageSize unique articles or run out.
+      if (collected.length < pageSize && total > collected.length) {
+        const seen = new Set(collected.map(a => a && (a.url || a.title)));
+        let nextPage = page + 1;
+        const lastPage = Math.max(1, Math.ceil(total / pageSize));
+
+        while (collected.length < pageSize && nextPage <= lastPage) {
+          try {
+            const nextData = await fetchPage(nextPage);
+            const nextArticles = Array.isArray(nextData.articles) ? nextData.articles : [];
+            for (const art of nextArticles) {
+              if (!art) continue;
+              const key = art.url || art.title;
+              if (!key) continue;
+              if (!seen.has(key)) {
+                seen.add(key);
+                collected.push(art);
+                if (collected.length >= pageSize) break;
+              }
+            }
+          } catch (e) {
+            // if a following page fails, stop attempting further pages
+            console.warn('Failed to fetch next page for fill:', e.message || e);
+            break;
+          }
+          nextPage += 1;
         }
-        const data = text ? JSON.parse(text) : null;
-        if (!data || data.status !== 'ok') throw new Error(data?.message || 'No articles returned');
-        setArticles(data.articles || []);
-        setTotalResults(data.totalResults || 0);
-      } else {
-        // Production: call serverless proxy
-        const res = await fetch(`/api/news?${params.toString()}`);
-        const text = await res.text();
-        if (!res.ok) {
-          let parsed;
-          try { parsed = JSON.parse(text); } catch (_) { parsed = { error: text || `HTTP ${res.status}` } }
-          throw new Error(parsed.error || parsed.message || `HTTP ${res.status}`);
-        }
-        const data = text ? JSON.parse(text) : null;
-        if (!data || data.status !== 'ok') throw new Error(data?.message || 'No articles returned');
-        setArticles(data.articles || []);
-        setTotalResults(data.totalResults || 0);
       }
+
+  setArticles(collected);
+  setTotalResults(total);
+  console.log('[debug] setArticles done, collected=', collected.length, 'total=', total);
     } catch (err) {
       console.error('Error fetching articles:', err);
       setError(err.message);
@@ -248,22 +289,31 @@ function App() {
         <p>Dapatkan informasi terkini dari berbagai sumber berita terpercaya.</p>
       </Header>
       <Navigation 
-        category={category} 
-        onCategoryChange={handleCategoryChange} 
+        activeCategory={category}
+        onCategoryChange={handleCategoryChange}
+        onSearch={handleSearch}
+        onFilter={(from, to) => {
+          // when Navigation's FilterModal calls onFilter, update App state
+          setFromDate(from);
+          setToDate(to);
+          setPage(1);
+        }}
       />
       <MainContent>
         {error && <ErrorMessage>{error}</ErrorMessage>}
         {loading && <LoadingMessage>Memuat artikel...</LoadingMessage>}
         {!loading && (
           <>
-            <InfoBar>
-              Menampilkan {articles.length} dari {totalResults} artikel.
-            </InfoBar>
+            {/* Use server-side pagination: assume `articles` already contains
+                the items for the current page (returned by the API). This avoids
+                slicing the array twice and ensures paging works correctly when
+                the backend returns paged results. */}
+          
             <ArticleList articles={articles} />
             <Pagination 
               currentPage={page} 
-              totalResults={totalResults} 
-              pageSize={pageSize} 
+              totalPages={totalPages}
+              pageSize={pageSize}
               onPageChange={handlePageChange} 
             />
           </>

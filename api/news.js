@@ -3,7 +3,7 @@
 
 export default async function handler(req, res) {
   try {
-    const { category, page = '1', pageSize = '10', searchQuery } = req.query;
+  const { category, page = '1', pageSize = '10', searchQuery, from, to } = req.query;
     const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
     if (!apiKey) {
       console.error('Missing NEWSAPI_KEY');
@@ -16,7 +16,9 @@ export default async function handler(req, res) {
     if (searchQuery) params.set('q', searchQuery);
     else params.set('country', 'us');
 
-    if (category && category !== 'all') params.set('category', category);
+  if (category && category !== 'all') params.set('category', category);
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
 
     const upstream = await fetch(`${endpoint}?${params.toString()}`);
     const text = await upstream.text();

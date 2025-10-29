@@ -11,9 +11,22 @@ import ArticleCard from './ArticleCard';
 */
 const ListContainer = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 30px;
+  gap: 24px;
   margin-bottom: 30px;
+  /* Responsive grid: 1 column on very small, then 2,3,4 columns on larger screens */
+  grid-template-columns: repeat(1, 1fr);
+
+  @media (min-width: 600px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (min-width: 900px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
 `;
 
 /* 
@@ -52,8 +65,9 @@ const ArticleList = ({ articles }) => {
         Namun, menggunakan `index` sebagai `key` tidak ideal jika daftar bisa berubah (ditambah, diurutkan, atau dihapus).
         Sebaiknya gunakan ID yang unik dari artikel itu sendiri jika tersedia (misalnya, `article.url`).
       */}
-      {articles.map((article, index) => (
-        <ArticleCard key={index} article={article} />
+      {articles.map((article) => (
+        // Use article.url as a stable key when available
+        <ArticleCard key={article.url || article.title} article={article} />
       ))}
     </ListContainer>
   );

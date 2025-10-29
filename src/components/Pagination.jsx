@@ -9,7 +9,7 @@ const PaginationContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 0x;
+  gap: 8px;
   margin: 30px 0;
   
   /* Responsif untuk layar yang lebih kecil */
@@ -65,74 +65,70 @@ const PageEllipsis = styled.span`
 
 /* Pagination - Komponen untuk menavigasi antar halaman */
 const Pagination = ({ currentPage, totalPages, onPageChange }) => {
-  // Menghitung range halaman yang akan ditampilkan (4 angka berurutan)
-  const calculateVisiblePages = () => {
-    let start = currentPage;
-    // Jika halaman saat ini terlalu dekat dengan akhir, geser window ke kiri
-    if (start > totalPages - 3) {
-      start = Math.max(totalPages - 3, 1);
+  // Professional pagination: show up to maxButtons page numbers with ellipses
+  const maxButtons = 7; // including first and last when needed
+
+  const getPageRange = () => {
+    if (totalPages <= maxButtons) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
     }
-    // Generate 4 angka berurutan dari start
-    return Array.from({ length: 4 }, (_, i) => start + i).filter(num => num <= totalPages);
+
+    const pages = [];
+    const sideButtons = 2; // first and last reserved, remaining for window
+    const windowSize = maxButtons - 2; // excluding first and last
+
+    let start = Math.max(2, currentPage - Math.floor(windowSize / 2));
+    let end = Math.min(totalPages - 1, start + windowSize - 1);
+
+    // shift start left if we're too close to the end
+    start = Math.max(2, Math.min(start, totalPages - windowSize));
+
+    pages.push(1);
+    if (start > 2) pages.push('left-ellipsis');
+
+    for (let p = start; p <= end; p++) pages.push(p);
+
+    if (end < totalPages - 1) pages.push('right-ellipsis');
+    pages.push(totalPages);
+
+    return pages;
   };
 
-  const visiblePages = calculateVisiblePages();
-  const showFirstPage = visiblePages[0] > 1;
-  const showLastPage = visiblePages[visiblePages.length - 1] < totalPages;
+  const pagesToShow = getPageRange();
 
   return (
     <PaginationContainer>
-      {/* Tombol previous (<<) */}
-      <PageButton 
-        onClick={() => onPageChange(currentPage - 1)} 
+      <PageButton
+        aria-label="Previous page"
+        onClick={() => onPageChange(Math.max(1, currentPage - 1))}
         disabled={currentPage === 1}
       >
-        &laquo;
+        {"<"}
       </PageButton>
-      
-      {/* Tampilkan halaman pertama jika window tidak dimulai dari 1 */}
-      {showFirstPage && (
-        <>
-          <PageButton 
-            active={currentPage === 1 ? 1 : 0}
-            onClick={() => onPageChange(1)}
+
+      {pagesToShow.map((item, idx) => {
+        if (item === 'left-ellipsis' || item === 'right-ellipsis') {
+          return <PageEllipsis key={item + idx}>...</PageEllipsis>;
+        }
+
+        return (
+          <PageButton
+            key={item}
+            active={item === currentPage}
+            aria-current={item === currentPage ? 'page' : undefined}
+            onClick={() => onPageChange(item)}
           >
-            1
+            {item}
           </PageButton>
-          <PageEllipsis>...</PageEllipsis>
-        </>
-      )}
-      
-      {/* Tampilkan 4 angka berurutan */}
-      {visiblePages.map(page => (
-        <PageButton 
-          key={page}
-          active={page === currentPage ? 1 : 0}
-          onClick={() => onPageChange(page)}
-        >
-          {page}
-        </PageButton>
-      ))}
-      
-      {/* Tampilkan halaman terakhir jika window tidak sampai ke halaman terakhir */}
-      {showLastPage && (
-        <>
-          <PageEllipsis>...</PageEllipsis>
-          <PageButton 
-            active={currentPage === totalPages ? 1 : 0}
-            onClick={() => onPageChange(totalPages)}
-          >
-            {totalPages}
-          </PageButton>
-        </>
-      )}
-      
-      {/* Tombol next (>>) */}
-      <PageButton 
-        onClick={() => onPageChange(currentPage + 1)} 
+        );
+      })}
+
+      <PageButton
+        aria-label="Next page"
+        onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
         disabled={currentPage === totalPages}
       >
-        &raquo;
+        {">"}
       </PageButton>
     </PaginationContainer>
   );
