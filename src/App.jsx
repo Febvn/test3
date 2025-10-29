@@ -151,100 +151,36 @@ function App() {
   
   /* Fungsi untuk mengambil artikel dari NewsAPI */
   const fetchArticles = async () => {
-    console.log('[debug] fetchArticles start, page=', page, 'pageSize=', pageSize, 'category=', category, 'searchQuery=', searchQuery);
     setLoading(true);
     setError(null);
 
-    // Build query params used by both local direct calls and production proxy
-    const params = new URLSearchParams({
-      page: String(page),
-      pageSize: String(pageSize)
-    });
-    if (category && category !== 'all') params.set('category', category);
-    if (searchQuery) params.set('searchQuery', searchQuery);
-
     try {
-      // Helper to fetch a specific page and return parsed JSON (works both dev & prod)
-      const fetchPage = async (pageNum) => {
-        if (import.meta.env.DEV) {
-          const apiKey = import.meta.env.VITE_NEWS_API_KEY;
-          if (!apiKey) throw new Error('Missing VITE_NEWS_API_KEY in development .env.local');
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize)
+      });
 
-          if (searchQuery) {
-            const p = new URLSearchParams({ q: searchQuery, page: String(pageNum), pageSize: String(pageSize), apiKey });
-            if (category && category !== 'all') p.set('category', category);
-            if (fromDate) p.set('from', fromDate);
-            if (toDate) p.set('to', toDate);
-            const endpoint = `https://newsapi.org/v2/everything?${p.toString()}`;
-            const res = await fetch(endpoint);
-            const text = await res.text();
-            if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-            return JSON.parse(text);
-          } else {
-            const p = new URLSearchParams({ country: 'us', page: String(pageNum), pageSize: String(pageSize), apiKey });
-            if (category && category !== 'all') p.set('category', category);
-            if (fromDate) p.set('from', fromDate);
-            if (toDate) p.set('to', toDate);
-            const endpoint = `https://newsapi.org/v2/top-headlines?${p.toString()}`;
-            const res = await fetch(endpoint);
-            const text = await res.text();
-            if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-            return JSON.parse(text);
-          }
-        } else {
-          const p = new URLSearchParams({ page: String(pageNum), pageSize: String(pageSize) });
-          if (category && category !== 'all') p.set('category', category);
-          if (searchQuery) p.set('searchQuery', searchQuery);
-          if (fromDate) p.set('from', fromDate);
-          if (toDate) p.set('to', toDate);
-          const res = await fetch(`/api/news?${p.toString()}`);
-          const text = await res.text();
-          if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-          return JSON.parse(text);
-        }
-      };
-
-  // Fetch requested page
-  const firstPageData = await fetchPage(page);
-  console.log('[debug] firstPageData fetched', firstPageData && { status: firstPageData.status, articles: firstPageData.articles && firstPageData.articles.length, totalResults: firstPageData.totalResults });
-      if (!firstPageData || firstPageData.status !== 'ok') throw new Error(firstPageData?.message || 'No articles returned');
-
-      let collected = Array.isArray(firstPageData.articles) ? [...firstPageData.articles] : [];
-      const total = firstPageData.totalResults || 0;
-
-      // If backend returned fewer than pageSize but there are more results available,
-      // fetch subsequent pages and append until we have pageSize unique articles or run out.
-      if (collected.length < pageSize && total > collected.length) {
-        const seen = new Set(collected.map(a => a && (a.url || a.title)));
-        let nextPage = page + 1;
-        const lastPage = Math.max(1, Math.ceil(total / pageSize));
-
-        while (collected.length < pageSize && nextPage <= lastPage) {
-          try {
-            const nextData = await fetchPage(nextPage);
-            const nextArticles = Array.isArray(nextData.articles) ? nextData.articles : [];
-            for (const art of nextArticles) {
-              if (!art) continue;
-              const key = art.url || art.title;
-              if (!key) continue;
-              if (!seen.has(key)) {
-                seen.add(key);
-                collected.push(art);
-                if (collected.length >= pageSize) break;
-              }
-            }
-          } catch (e) {
-            // if a following page fails, stop attempting further pages
-            console.warn('Failed to fetch next page for fill:', e.message || e);
-            break;
-          }
-          nextPage += 1;
-        }
+      if (searchQuery) {
+        // search uses /everything on server; do NOT include category
+        params.set('searchQuery', searchQuery);
+        if (fromDate) params.set('from', fromDate);
+        if (toDate) params.set('to', toDate);
+      } else {
+        if (category && category !== 'all') params.set('category', category);
       }
 
-  setArticles(collected);
-  setTotalResults(total);
-  console.log('[debug] setArticles done, collected=', collected.length, 'total=', total);
+      const res = await fetch(`/api/news?${params.toString()}`);
+      const text = await res.text();
+      if (!res.ok) {
+        let parsed;
+        try { parsed = JSON.parse(text); } catch (e) { parsed = { error: text }; }
+        throw new Error(parsed.error || parsed.message || `HTTP ${res.status}`);
+      }
+      const data = text ? JSON.parse(text) : null;
+      if (!data || data.status !== 'ok') throw new Error(data?.message || 'No articles returned');
+
+      setArticles(data.articles || []);
+      setTotalResults(data.totalResults || 0);
     } catch (err) {
       console.error('Error fetching articles:', err);
       setError(err.message);

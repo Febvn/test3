@@ -4,48 +4,35 @@ import axios from 'axios';
 // Uses VITE_NEWS_API_KEY from environment variables (set in Vercel Project Settings).
 export default async function handler(req, res) {
   try {
-    const query = req.query || {};
+    const { category, page = '1', pageSize = '8', searchQuery, from, to } = req.query;
+    const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Missing NEWSAPI_KEY' });
 
-    // Choose endpoint: 'everything' for q/from/to, otherwise 'top-headlines'.
-    const useEverything = Boolean(query.q) || Boolean(query.from) || Boolean(query.to);
-    const endpoint = useEverything
-      ? 'https://newsapi.org/v2/everything'
-      : 'https://newsapi.org/v2/top-headlines';
+    const isSearch = Boolean(searchQuery);
+    const endpoint = isSearch ? 'https://newsapi.org/v2/everything' : 'https://newsapi.org/v2/top-headlines';
+    const params = new URLSearchParams({ apiKey, page, pageSize });
 
-    const params = new URLSearchParams();
-
-    if (useEverything) {
-      params.set('q', query.q || 'news');
+    if (isSearch) {
+      params.set('q', searchQuery);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
     } else {
-      if (query.country) params.set('country', query.country);
-      if (query.category) params.set('category', query.category);
+      params.set('country', 'us');
+      if (category && category !== 'all') params.set('category', category);
     }
 
-    if (query.page) params.set('page', query.page);
-    if (query.pageSize) params.set('pageSize', query.pageSize);
-    if (query.from) params.set('from', query.from);
-    if (query.to) params.set('to', query.to);
+    const upstream = await fetch(`${endpoint}?${params.toString()}`);
+    const text = await upstream.text();
 
-    // Prefer NEWSAPI_KEY (common), fall back to VITE_NEWS_API_KEY for older setups
-    const apiKey = process.env.NEWSAPI_KEY || process.env.VITE_NEWS_API_KEY || process.env.NEWS_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({
-        status: 'error',
-        message:
-          'Server missing NewsAPI key. Set NEWSAPI_KEY (or VITE_NEWS_API_KEY) in your environment variables (e.g. Vercel Project Settings -> Environment Variables).'
-      });
+    if (!upstream.ok) {
+      console.error('Upstream NewsAPI error', upstream.status, text);
+      return res.status(502).json({ error: 'Upstream NewsAPI error', status: upstream.status, details: text });
     }
 
-    // NewsAPI accepts apiKey as a query param
-    params.set('apiKey', apiKey);
-    const url = `${endpoint}?${params.toString()}`;
-
-    const apiResponse = await axios.get(url);
-    return res.status(200).json(apiResponse.data);
-  } catch (error) {
-    return res.status(500).json({
-      message: 'Gagal mengambil data dari News API',
-      error: error.message
-    });
+    const data = text ? JSON.parse(text) : null;
+    return res.status(200).json(data);
+  } catch (err) {
+    console.error('API handler error:', err);
+    return res.status(500).json({ error: 'Internal server error', details: err.message });
   }
 }
