@@ -221,8 +221,8 @@ function App() {
   return (
     <AppContainer>
       <Header>
-        <h1>Berita Terbaru</h1>
-        <p>Dapatkan informasi terkini dari berbagai sumber berita terpercaya.</p>
+        <h1>BRUTAL NEWS</h1>
+        <p>Just raw information, stay brutal.</p>
       </Header>
       <Navigation 
         activeCategory={category}
